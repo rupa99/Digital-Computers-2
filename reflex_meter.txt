@@ -1,0 +1,213 @@
+; ECE-222 Lab ... Winter 2018 term 
+; Lab 3 sample code 
+;
+; updated Dec 2017
+				THUMB 		; Thumb instruction set 
+                AREA 		My_code, CODE, READONLY
+                EXPORT 		__MAIN
+				ENTRY  
+__MAIN
+
+; The following lines are similar to Lab-1 but use a defined address to make it easier.
+; They just turn off all LEDs 
+				LDR			R10, =LED_BASE_ADR		; R10 is a permenant pointer to the base address for the LEDs, offset of 0x20 and 0x40 for the ports
+
+				MOV 		R3, #0xB0000000		; Turn LED pins to outputs and turn off three LEDs on port 1  
+				STR 		R3, [r10, #0x20]
+				MOV 		R3, #0x0000007C
+				STR 		R3, [R10, #0x40] 	; Turn LED pins to outputs and turn off five LEDs on port 2 
+
+; This line is very important in your main program
+; Initializes R11 to a 16-bit non-zero value and NOTHING else can write to R11 !!
+				MOV			R11, #0xABCD		; Init the random number generator with a non-zero number
+		; NEVER WRITE TO R11 again!!!! or you will break the RandomNum routine from working properly
+		
+; Simple_counter_Display 
+		; MOV R1, #0xFF
+		; MOV R8, #0
+									; ;byte counter
+; Simple_counter_InnerLoop											;loop through each byte of the 32bit reaction time
+	; MOV R4, #0x000000FF 
+	
+	; AND R4, R8, R4									;get the lower 8 bits
+	; RBIT R4, R4 									;reverse bits						
+	; EOR R4, #0xFF									;inverts the bits
+	; MOV R5, R4										; R5 is the temp that stores the current R4 value
+			
+	; LSR R4, #25										; shift it to the corresponding positions in port 2
+	; STR R4, [R10, #0x54]							;outputting to pins on port 2
+			
+	; LSR R5, #24										; get the R5 value and shift it to the lower 24 bits
+	; MOV R9, #0x0									; set R9 to 0 
+	; BFI R9, R5, #28, #2								; Bit field insert the values the resultant values from the shift into corresponding positions
+	; LSR R5, #2
+	; BFI R9, R5, #31, #1
+	; STR R9, [R10, #0x34]							; outputting the resultant value to pins on port 1
+	; ADD R8, #1
+	
+	; MOVT R0, #0x000A;100 ms delay
+	
+			
+; Simple_counter_delay_loop
+		; SUBS 		R0, #1 			; Decrement r0 and set the N,Z,C status bits
+		; BNE 		Simple_counter_delay_loop	
+			
+	
+	; SUBS R1, #1
+	
+
+	; BNE Simple_counter_InnerLoop 
+
+
+	; B Simple_counter_Display
+	
+	
+
+loop 			BL 			RandomNum 
+				
+				MOV R6, #20000						;mapping when given random number
+				MOV R5, #16							
+				MUL R11, R5 						
+				LSR R11, #7
+				ADD R11, R6
+				MOV R0, R11 						;store mapped number into R0
+				BL DELAY    						;call delay for calculated random delay time
+				MOV R4, #0x20000000
+				STR R4, [R10, #0x34] 				;turn on p1.29
+				MOV R8, #0 ;set counter to 255
+				BL Polling
+				B loop
+Polling	
+	MOV R0, #0x87 									;100 ms delay
+
+Simple_counter_delay
+		SUBS 		R0, #1 							;Simple counter to capture reaction time
+		BNE 		Simple_counter_delay					
+		LDR R9, =FIO2PIN
+		LDR R6, [R9]
+		LSLS R6, #22 								;check input of 10th bit of 32 but representation of p2 (p2.10)
+		ADD R8, R8, #1								;increment simple count value
+		MOV R1, R8									;store counter to R1
+		BCS Polling
+Display 
+		MOV R8, R1									
+		MOV R7, #4									;byte counter
+InnerLoop											;loop through each byte of the 32bit reaction time
+	MOV R4, #0x000000FF 
+	
+	AND R4, R8, R4									;get the lower 8 bits
+	RBIT R4, R4 									;reverse bits						
+	EOR R4, #0xFF									;inverts the bits
+	MOV R5, R4										; R5 is the temp that stores the current R4 value
+			
+	LSR R4, #25										; shift it to the corresponding positions in port 2
+	STR R4, [R10, #0x54]							;outputting to pins on port 2
+			
+	LSR R5, #24										; get the R5 value and shift it to the lower 24 bits
+	MOV R9, #0x0									; set R9 to 0 
+	BFI R9, R5, #28, #2								; Bit field insert the values the resultant values from the shift into corresponding positions
+	LSR R5, #2
+	BFI R9, R5, #31, #1
+	STR R9, [R10, #0x34]							; outputting the resultant value to pins on port 1
+	
+	LDR R0, =two_second_delay;2s delay
+	
+			
+delay_loop
+		SUBS 		R0, #1 			; Decrement r0 and set the N,Z,C status bits
+		BNE 		delay_loop	
+			
+	LSR R8, #8
+	SUBS R7, #1
+	
+
+	BNE InnerLoop 
+
+	LDR R0, =three_second_delay;2s delay
+			
+delay_loop2
+		SUBS 		R0, #1 			; Decrement r0 and set the N,Z,C status bits
+		BNE 		delay_loop2	
+			
+	LSRS R8, #8
+
+	B Display
+
+
+
+DELAY			STMFD		R13!,{R1, R14}
+		;
+		; code to generate a delay of 0.1mS * R0 times
+		;
+		MOV R5, #0x0083
+		MUL R0, R0, R5 ;R0*65535/(5*10^3) is equivalent to the number of 100us delays
+		
+		
+		
+delay_loop3
+	SUBS 		R0, #1 			; Decrement r0 and set the N,Z,C status bits
+	BNE 		delay_loop3		
+	
+
+exitDelay		LDMFD		R13!,{R1, R15}
+
+
+
+LED_BASE_ADR	EQU 	0x2009c000 		; Base address of the memory that controls the LEDs 
+FIO2PIN 		EQU		0x2009c054
+MAX 			EQU		0x0000000F
+three_second_delay EQU 0x001e0000;0x0002f0ee
+two_second_delay EQU 0x001FF000;0x0001f5f4
+test EQU 0x1723F323
+
+; Not used PINSEL3			EQU 	0x4002c00c 		; Address of Pin Select Register 3 for P1[31:16]
+; Not used PINSEL4			EQU 	0x4002c010 		; Address of Pin Select Register 4 for P2[15:0]
+;	Usefull GPIO Registers
+;	FIODIR  - register to set individual pins as input or output
+;	FIOPIN  - register to read and write pins
+;	FIOSET  - register to set I/O pins to 1 by writing a 1
+;	FIOCLR  - register to clr I/O pins to 0 by writing a 1
+
+;
+;  Pseudo Random Number Routine
+;
+; R11 holds a 16-bit random number via a pseudo-random sequence as per the Linear feedback shift register (Fibonacci) on WikiPedia
+; R11 holds a non-zero 16-bit number.  If a zero is fed in the pseudo-random sequence will stay stuck at 0
+; Take as many bits of R11 as you need.  If you take the lowest 4 bits then you get a number between 0 and 15 but 16 bits gives you a number between 1 and 0xffff.
+;
+; R11 MUST be initialized to a non-zero 16-bit value at the start of the program OR ELSE IT WILL STAY at zero
+;
+; R11 can be read anywhere in the code but must only be written to by this subroutine
+;
+RandomNum		STMFD		R13!,{R1, R2, R3, R14}
+
+				AND			R1, R11, #0x8000
+				AND			R2, R11, #0x2000
+				LSL			R2, #2
+				EOR			R3, R1, R2
+				AND			R1, R11, #0x1000
+				LSL			R1, #3
+				EOR			R3, R3, R1
+				AND			R1, R11, #0x0400
+				LSL			R1, #5
+				EOR			R3, R3, R1		; the new bit to go into the LSB is present
+				LSR			R3, #15
+				LSL			R11, #1
+				ORR			R11, R11, R3
+				MOV			R3, #0xffff		; erase the garbage in the upper 16 bits of R11
+				AND			R11, R3
+				LDMFD		R13!,{R1, R2, R3, R15}
+
+				ALIGN 
+
+				END 
+				
+; Question 1--
+	;8-bits - 25.5 ms 
+	; 16- bits - 6553.5 ms 
+	; 24- bits - 167721.5 ms
+	; 32- bits - 429496729.5 ms 
+	
+; Question 2: 
+; 16 bits -- trail and error
+

@@ -1,0 +1,211 @@
+;*-------------------------------------------------------------------
+;* Name:    	lab_4_program.s 
+;* Purpose: 	A sample style for lab-4
+;* Term:	Winter 2018
+;
+; updated Dec 2017
+;*-------------------------------------------------------------------
+				THUMB 					; Declare THUMB instruction set 
+				AREA 	My_code, CODE, READONLY 	; 
+				EXPORT 		__MAIN 			; Label __MAIN is used externally 
+				EXPORT 		EINT3_IRQHandler 	; without this export the interupt routine will not be found
+
+				ENTRY 
+
+__MAIN
+
+; The following lines are similar to previous labs.
+; Turn off all LEDs by turning them to output pins
+				LDR		R10, =LED_BASE_ADR	; R10 is a  pointer to the base address for the LEDs
+				MOV 		R3, #0xB0000000		; Turn LED pins to output and turn off three LEDs on port 1  
+				STR 		R3, [r10, #0x20]
+				MOV 		R3, #0x0000007C
+				STR 		R3, [R10, #0x40] 	; Turn LED pins to output and turn off five LEDs on port 2 
+
+	; Enable Interrupts
+	; Enable the EINT3 channel (External INTerrupt 3) which is shared with GPIO interrupts with ISER0 (Interrupt Set Enable 0
+		;Table 52 of the LPC17xx User manual)
+	;ISER0			EQU		0xE000E100		; Interrupt Set-Enable Register 0 
+
+	; Enable the GPIO interrupt on pin P2.10 for falling edge with IO2IntEnF (IO 2 INTerupt Enable Falling) using Table 117
+		;of the LPC17xx User manual. P2.10 is high when the INT0 button is not pressed.
+	;IO2IntEnf		EQU		0x400280B4		; GPIO Interrupt Enable for port 2 Falling Edge 
+
+
+; This line is very important in your main program
+; Initialize R11 to a 16-bit non-zero value and NEVER WRITE TO R11 AGAIN !!
+				MOV			R11, #0xABCD		; Init the random number generator with a large 16-bit non-zero number
+				MOV			R6, #0x0		; initialize R6 to 0, when it is non-zero the button has been pressed
+			
+				LDR			R3, =ISER0			
+				MOV			R2, #0x00200000		; bit 21 is set to 1
+				STR			R2, [R3]
+		
+				MOV 	R4, #1<<10;
+				LDR 	R9, =IO2IntEnf; 
+				STR 	R4, [R9]; 	;enabling pin2.10 - to recognize a button push
+				MOV R8, #0			;using R8 to store the scaled random number value; initializing it to 0
+				
+LOOP 			BL 			RNG 				; keep calling this, and flash the LEDs until the button is pressed to randomize the RNG
+
+	; flash all 8 LEDs between 1 and 10Hz
+	TEQ         R8, #0 							; if the button is pushed R8 will be a random number between 5 and 250, and it will enter the display subroutine
+												; else  if the button is not pushed, then the loop will continue
+
+	
+	BLNE Display
+
+	; When R6 is non-zero stop flashing and display R6 on the 8-LEDs
+
+	; count down R6 by 10 every second and update the display
+
+	; be sure to have BL RNG in your timing loop to keep generating new random numbers
+
+	; when R6 would go to 0 or negative, set R6 to 0 and branch back up to start flashing the LEDs
+
+	B 			LOOP						
+
+Display	STMFD		R13!,{R14}
+	;BL 			RNG 
+
+; flash all 8 LEDs between 1 and 10Hz
+
+Flashing
+	; When R6 is non-zero stop flashing and display R6 on the 8-LEDs
+	BL 			RNG 
+	MOV R4, #0x000000FF 
+	;BL 			RNG
+	
+	AND R4, R8, R4									;get the lower 8 bits
+	RBIT R4, R4 									;reverse bits						
+	EOR R4, #0xFF									;inverts the bits
+	MOV R5, R4										; R5 is the temp that stores the current R4 value
+			
+	LSR R4, #25										; shift it to the corresponding positions in port 2
+	STR R4, [R10, #0x54]							;outputting to pins on port 2
+			
+	LSR R5, #24										; get the R5 value and shift it to the lower 24 bits
+	MOV R9, #0x0									; set R9 to 0 
+	BFI R9, R5, #28, #2								; Bit field insert the values the resultant values from the shift into corresponding positions
+	LSR R5, #2
+	BFI R9, R5, #31, #1
+	STR R9, [R10, #0x34]							; outputting the resultant value to pins on port 1
+	
+	MOVT 		R7, #0x000F;	; init delay counter to match 1Hertz frequency
+Delay 
+	SUBS 		R7, #1 			; subtract 1 from delay counter and updates condition code
+	BNE Delay					; verify whether the condition code is equal to 0; if so, exit from loop; else, repeat loop
+	
+	; count down R6 by 10 every second and update the display
+	SUBS R8, #10				; decrement the scaled number by 10
+
+	BL 			RNG 			
+	BPL Flashing  ;branch if greater than 0
+	
+	
+	MOV			R8, #0 			; after the value has reached 0 or below, exit the display and reinitialize the R8 value to 0, to continue polling
+	;MOV 		R6, #0
+	
+ 
+exitDisplay 	LDMFD		R13!,{R15}
+
+
+
+;*------------------------------------------------------------------- 
+; Interrupt Service Routine (ISR) for EINT3_IRQHandler 
+;*------------------------------------------------------------------- 
+; This ISR handles the interrupt triggered when the INT0 push-button is pressed 
+; with the assumption that the interrupt activation is done in the main program
+;
+; Register R0 to R3 are automatically saved on the stack during an interrupt
+;
+; This is an interrupt routine - do not call it like a subroutine
+;
+EINT3_IRQHandler 	
+		STMFD 		R13!,{R14}	; Use this command if you need it  
+		
+		;BL 			RNG 
+		
+		; Code that handles the interrupt 
+		;
+		; generate a new random number between 50 and 250 in R6 from the random number in R11
+		MOV R7, #0x00000032						;mapping when given random number
+		;MOV R5, #1						
+		;MUL R11, R5 		
+		MOV R1, #0x00000008;
+		MOV R6, R11								
+		LSR R6, R1;								; divide the random number by 2^8, equivalent to multiplying it by 0.0039
+		ADD R6, R6, R7							; add the offset to the scaled value
+		MOV R8, R6;								; move the scaled value in R8
+		
+		;MOV R8, #50
+		
+	; clear/acknowledge the interrupt using IO2INTCLR
+
+		
+		MOV R0, #1<<10
+		LDR R2, =IO2INTCLR						; clearing the exception by setting the 10th bit to a 1
+		STR R0, [R2];
+		
+		;BL Display
+		
+		LDMFD 		R13!,{R15} 	; Use this command if you used STMFD (otherwise use BX LR to return) 
+		
+
+;*------------------------------------------------------------------- 
+; Subroutine DELAY ... Causes a delay of 100ms * R0 times
+;
+; re-use your Lab #3 code and scale it for 100ms when R0 = 1
+;*------------------------------------------------------------------- 
+;
+DELAY			STMFD		R13!,{R2, R14}
+		;
+		; Code to generate a delay of 100mS * R0 times
+		;
+exitDelay		LDMFD		R13!,{R2, R15}
+
+
+;*------------------------------------------------------------------- 
+; Subroutine RNG ... Generates a 16-bit pseudo-Random Number in R11 
+;*------------------------------------------------------------------- 
+; R11 holds a random number as per the Linear feedback shift register (Fibonacci) on WikiPedia
+; R11 MUST be initialized to a large, non-zero 16-bit value at the start of the program
+; R11 can be read anywhere in the code but must only be written to by this subroutine
+RNG 			STMFD		R13!,{R1-R3, R14} 	; Random Number Generator 
+				AND			R1, R11, #0x8000
+				AND			R2, R11, #0x2000
+				LSL			R2, #2
+				EOR			R3, R1, R2
+				AND			R1, R11, #0x1000
+				LSL			R1, #3
+				EOR			R3, R3, R1
+				AND			R1, R11, #0x0400
+				LSL			R1, #5
+				EOR			R3, R3, R1			; The new bit to go into the LSB is present
+				LSR			R3, #15
+				LSL			R11, #1
+				ORR			R11, R11, R3
+				MOV			R3, #0xFFFF			; clear the upper 16 bits of R11 as it's garbage
+				AND			R11, R3
+				LDMFD		R13!,{R1-R3, R15}
+
+
+				ALIGN 
+
+;*-------------------------------------------------------------------
+; Below is a list of useful registers with their respective memory addresses.
+;*------------------------------------------------------------------- 
+LED_BASE_ADR	EQU 	0x2009c000 		; Base address of the memory that controls the LEDs 
+PINSEL3			EQU 	0x4002C00C 		; Pin Select Register 3 for P1[31:16]
+PINSEL4			EQU 	0x4002C010 		; Pin Select Register 4 for P2[15:0]
+FIO1DIR			EQU		0x2009C020 		; Fast Input Output Direction Register for Port 1 
+FIO2DIR			EQU		0x2009C040 		; Fast Input Output Direction Register for Port 2 
+FIO1SET			EQU		0x2009C038 		; Fast Input Output Set Register for Port 1 
+FIO2SET			EQU		0x2009C058 		; Fast Input Output Set Register for Port 2 
+FIO1CLR			EQU		0x2009C03C 		; Fast Input Output Clear Register for Port 1 
+FIO2CLR			EQU		0x2009C05C 		; Fast Input Output Clear Register for Port 2 
+IO2IntEnf		EQU		0x400280B4		; GPIO Interrupt Enable for port 2 Falling Edge 
+ISER0			EQU		0xE000E100		; Interrupt Set-Enable Register 0 
+IO2INTCLR		EQU		0x400280AC		; Interrupt Port 2 Clear Register - find this in the processor manual
+;Divisor			EQU 	0x00000014
+				END 

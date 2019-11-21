@@ -1,0 +1,59 @@
+;*----------------------------------------------------------------------------
+;* Name:    Lab_1_program.s 
+;* Purpose: This code flashes one LED at approximately 1 Hz frequency 
+;* Author: 	Rasoul Keshavarzi 
+;*----------------------------------------------------------------------------*/
+	THUMB		; Declare THUMB instruction set 
+	AREA		My_code, CODE, READONLY 	; 
+	EXPORT		__MAIN 		; Label __MAIN is used externally q
+	ENTRY 
+__MAIN
+; The following operations can be done in simpler methods. They are done in this 
+; way to practice different memory addressing methods. 
+; MOV moves into the lower word (16 bits) and clears the upper word
+; MOVT moves into the upper word
+; show several ways to create an address using a fixed offset and register as offset
+;   and several examples are used below
+; NOTE MOV can move ANY 16-bit, and only SOME >16-bit, constants into a register
+; BNE and BEQ can be used to branch on the last operation being Not Equal or EQual to zero
+;
+
+	MOV 		R7, #0x0		; init R7 register to 0 for the counter
+	MOV 		R2, #0xC000		; init R2 register to 0xC000 to create an offset
+	MOV 		R4, #0x0		; init R4 register to 0 to build address
+	MOVT 		R4, #0x2009		; assign 0x20090000 into R4
+	ADD 		R4, R4, R2 		; add 0xC000 to R4 to get 0x2009C000 0x2009C020
+	MOV 		R3, #0x0000007C	; move initial value for port P2 into R3: Turns off 5 LED's in port 2.
+	STR 		R3, [R4, #0x40] ; Turn off five LEDs on port 2 
+	MOV 		R2, #0x20		; put Port 1 offset into R2 for user later
+	MOV 		R5, #0xB0000000	; move initial value for port P1 into R5 - the contents of this register will determine whether p1.28 is on or off
+	STR 		R3, [R4, R2]	; adds offset of 20 to contents in R4 and turns off 3 LEDS by copying over the value at R3
+	MOV 		R6, #0xEFFFFFFF ; operand to be used in xnor operation stored in R6
+
+Flicker_Loop 
+	EOR 		R5, R5, R6 		; perform exclusive or (xor) operation between R6 and R5
+	MVN 		R5, R5			; overwrite current R5 value with bitwise not on current contents
+	STR 		R5, [R4, R2] 	; store contents of R5 into P1.28 memory location
+	MOVT 		R7, #0x000A;	; init delay counter to match 1Hertz frequency
+
+Delay 
+	SUBS 		R7, #1 			; subtract 1 from delay counter and updates condition code
+	BNE Delay					; verify whether the condition code is equal to 0; if so, exit from loop; else, repeat loop
+	B Flicker_Loop ; 			; loop back to beginning of flicker loop
+	
+ END 
+
+
+; Hand Assembly Instruction: 
+;
+; ADD R4, R4, R2
+; - Condition: 1110
+; - 27-26: 00
+; - Ri = 0
+; - OP Code: 0100
+; - S = 0
+; - Rn = 0100
+; - Rd = 0100
+; - Operand 2: 0010
+; 
+; 1110 00 0 0100 0 0100 0100 0010
